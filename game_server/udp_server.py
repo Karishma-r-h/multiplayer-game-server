@@ -1,20 +1,31 @@
 import socket
+import redis
 from protocol import pack_packet, unpack_packet, pack_position, unpack_position
 
 HOST = "127.0.0.1"
 PORT = 5000
 
+r = redis.Redis(host="localhost", port=6379, decode_responses=True)
+
+def get_position(addr_key: str) -> tuple[float, float]:
+    x = float(r.hget(addr_key, "x") or 0.0)
+    y = float(r.hget(addr_key, "y") or 0.0)
+    return x, y
+
+def set_position(addr_key: str, x: float, y: float):
+    r.hset(addr_key, mapping={"x": x, "y": y})
+
 def main():
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     sock.bind((HOST, PORT))
-    print(f"UDP prediction server listening on {HOST}:{PORT}")
+    print(f"UDP server (Redis-backed) listening on {HOST}:{PORT}")
 
-    player_state = {}   # addr -> {"x": float, "y": float}  (authoritative)
-    last_seq_seen = {}  # addr -> int
+    last_seq_seen = {}
 
     while True:
         data, addr = sock.recvfrom(1024)
         seq_num, payload = unpack_packet(data)
+        addr_key = f"player:{addr[0]}:{addr[1]}"
 
         newest_seen = last_seq_seen.get(addr, -1)
         if seq_num <= newest_seen:
@@ -22,17 +33,17 @@ def main():
             continue
         last_seq_seen[addr] = seq_num
 
-        dx, dy = unpack_position(payload)  # this payload is an INPUT delta, not absolute position
+        dx, dy = unpack_position(payload)
 
-        state = player_state.setdefault(addr, {"x": 0.0, "y": 0.0})
-        state["x"] += dx
-        state["y"] += dy
+        x, y = get_position(addr_key)
+        x += dx
+        y += dy
+        set_position(addr_key, x, y)
 
         print(f"Applied input #{seq_num} from {addr}: delta=({dx:.1f},{dy:.1f}) -> "
-              f"authoritative=({state['x']:.1f},{state['y']:.1f})")
+              f"authoritative (Redis)=({x:.1f},{y:.1f})")
 
-        # ack: seq_num = which input this confirms, payload = authoritative position
-        ack_packet = pack_packet(seq_num, pack_position(state["x"], state["y"]))
+        ack_packet = pack_packet(seq_num, pack_position(x, y))
         sock.sendto(ack_packet, addr)
 
 if __name__ == "__main__":
