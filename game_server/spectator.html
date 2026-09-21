@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Spectator Mode</title>
+  <style>
+    body { font-family: monospace; background: #111; color: #0f0; padding: 20px; }
+    #log { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h2>Live Spectator Feed</h2>
+  <div id="status">Connecting...</div>
+  <div id="log"></div>
+
+  <script>
+    const status = document.getElementById("status");
+    const log = document.getElementById("log");
+    const ws = new WebSocket("ws://localhost:7000");
+
+    ws.onopen = () => { status.textContent = "Connected"; };
+    ws.onclose = () => { status.textContent = "Disconnected"; };
+    ws.onerror = (e) => { status.textContent = "Error"; console.error(e); };
+
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      const line = `[${new Date().toLocaleTimeString()}] ${JSON.stringify(data.players)}\n`;
+      log.textContent = line + log.textContent;
+    };
+  </script>
+</body>
+</html>
