@@ -1,6 +1,7 @@
 import socket
 import redis
 from protocol import pack_packet, unpack_packet, pack_position, unpack_position
+from kafka_producer import publish_event
 
 HOST = "127.0.0.1"
 PORT = 5000
@@ -42,6 +43,9 @@ def main():
 
         print(f"Applied input #{seq_num} from {addr}: delta=({dx:.1f},{dy:.1f}) -> "
               f"authoritative (Redis)=({x:.1f},{y:.1f})")
+
+        if seq_num % 10 == 0:
+            publish_event("player_moved", {"addr": addr_key, "x": x, "y": y, "seq": seq_num})
 
         ack_packet = pack_packet(seq_num, pack_position(x, y))
         sock.sendto(ack_packet, addr)
